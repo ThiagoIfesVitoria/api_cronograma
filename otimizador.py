@@ -47,7 +47,16 @@ def otimizar_cronograma(df_sessoes, df_matriz_disponibilidade):
         sessoes_do_mes = [s for s, dados in sessoes.items() if dados['mes'] == m]
         problema += pulp.lpSum([y[s] for s in sessoes_do_mes]) <= 2, f"Maximo_2_Sessoes_por_Mes_{m}"
 
-    problema.solve()
+
+    # # cplex
+    # cplex_path = r"C:\Program Files\IBM\ILOG\CPLEX_Studio_Community2212\cplex\bin\x64_win64\cplex.exe"
+    
+    # # Passe o caminho para o PuLP
+    # solver_cplex = pulp.CPLEX_CMD(path=cplex_path)
+    # problema.solve(solver_cplex)
+
+    # normal
+    problema.solve(pulp.PULP_CBC_CMD(timeLimit=3000, gapRel=0.02))
 
     if pulp.LpStatus[problema.status] != 'Optimal':
         return {

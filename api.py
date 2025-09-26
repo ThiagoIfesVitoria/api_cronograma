@@ -110,6 +110,7 @@ async def gerar_cronograma_endpoint(
     
 # --- Modelos Pydantic para validar os dados do relatório ---
 # Isso garante que o JSON enviado pelo frontend tem a forma que esperamos.
+
 class SessaoAgendada(BaseModel):
     nome_sessao: str
     data_evento: str
@@ -123,65 +124,67 @@ class ResultadoRelatorio(BaseModel):
     sessoes_agendadas: List[SessaoAgendada]
 
 
-# --- NOVO ENDPOINT PARA CRIAR E BAIXAR O RELATÓRIO EXCEL ---
 @app.post("/api/criar-relatorio-excel")
 async def criar_relatorio_excel_endpoint(resultado: ResultadoRelatorio):
-    """
-    Recebe os dados do cronograma em JSON e gera um relatório Excel formatado.
-    """
     output = io.BytesIO()
 
-    # Inicia o "escritor" de Excel usando o XlsxWriter como motor
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
-        # --- Define os Estilos e Formatos ---
-        header_format = workbook.add_format({
-            'bold': True, 'text_wrap': True, 'valign': 'top',
-            'fg_color': '#4F81BD', 'font_color': 'white', 'border': 1
-        })
-        title_format = workbook.add_format({
-            'bold': True, 'font_size': 14, 'font_color': '#4F81BD'
-        })
-        info_label_format = workbook.add_format({'bold': True, 'font_color': '#333333'})
-        info_value_format = workbook.add_format({'font_color': '#333333'})
+        # --- 1. DEFINIÇÃO DOS ESTILOS (FORMATOS) ---
+        title_format = workbook.add_format({'bold': True, 'font_size': 16, 'font_color': '#002D5B', 'valign': 'vcenter'})
+        header_format = workbook.add_format({'bold': True, 'fg_color': '#002D5B', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        cell_format = workbook.add_format({'border': 1})
+        bold_format = workbook.add_format({'bold': True})
 
-        # --- Cria uma aba para cada sessão ---
+        # --- 2. CRIAÇÃO DA ABA DE RESUMO GERAL ---
+        resumo_data = []
+        for s in resultado.sessoes_agendadas:
+            resumo_data.append({
+                'Sessão': s.nome_sessao,
+                'Data': pd.to_datetime(s.data_evento).strftime('%d/%m/%Y'),
+                'Horário': f"{s.hora_inicio} - {s.hora_fim}",
+                'Nº de Participantes': s.quantidade_pessoas
+            })
+        
+        df_resumo = pd.DataFrame(resumo_data)
+        df_resumo.to_excel(writer, sheet_name='Resumo_Geral', startrow=2, index=False)
+        
+        # Formatando a aba de resumo
+        resumo_sheet = writer.sheets['Resumo_Geral']
+        resumo_sheet.write('A1', 'Resumo do Cronograma Otimizado', title_format)
+        
+        # Aplicando formato de cabeçalho na tabela de resumo
+        for col_num, value in enumerate(df_resumo.columns.values):
+            resumo_sheet.write(2, col_num, value, header_format)
+            
+        # Autoajuste da largura das colunas na aba de resumo
+        for i, col in enumerate(df_resumo.columns):
+            column_len = max(df_resumo[col].astype(str).str.len().max(), len(col)) + 2
+            resumo_sheet.set_column(i, i, column_len)
+
+        # --- 3. CRIAÇÃO DAS ABAS DETALHADAS PARA CADA SESSÃO ---
         for sessao in resultado.sessoes_agendadas:
-            sheet_name = sessao.nome_sessao.replace(" ", "_")[:31] # Nomes de abas têm limite de 31 caracteres
+            sheet_name = sessao.nome_sessao.replace(" ", "_")[:31]
+            df_participantes = pd.DataFrame({'Integrantes da Sessão': sorted(sessao.integrantes)})
             
-            # Cria um DataFrame com os participantes
-            df_participantes = pd.DataFrame({'Integrantes': sorted(sessao.integrantes)})
-            
-            # Escreve o DataFrame na aba, começando mais abaixo para dar espaço ao cabeçalho
-            df_participantes.to_excel(writer, sheet_name=sheet_name, startrow=6, index=False)
+            df_participantes.to_excel(writer, sheet_name=sheet_name, startrow=5, index=False)
             
             worksheet = writer.sheets[sheet_name]
-
-            # --- Escreve o Cabeçalho com Informações da Sessão ---
-            worksheet.write('B2', 'Relatório de Sessão', title_format)
-            worksheet.write('B4', 'Data:', info_label_format)
-            worksheet.write('C4', sessao.data_evento, info_value_format)
-            worksheet.write('B5', 'Horário:', info_label_format)
-            worksheet.write('C5', f"{sessao.hora_inicio} - {sessao.hora_fim}", info_value_format)
-            worksheet.write('E4', 'Total de Participantes:', info_label_format)
-            worksheet.write('F4', sessao.quantidade_pessoas, info_value_format)
-
-            # --- Formata a Tabela de Participantes ---
-            # Aplica o formato de cabeçalho à tabela
-            for col_num, value in enumerate(df_participantes.columns.values):
-                worksheet.write(6, col_num, value, header_format)
             
-            # Ajusta a largura da coluna para melhor visualização
-            worksheet.set_column('A:A', 40) # Coluna de Integrantes
-            worksheet.set_column('B:F', 20) # Colunas de informações
+            # Escrevendo o cabeçalho de informações da sessão
+            worksheet.write('A1', f"Detalhes da {sessao.nome_sessao}", title_format)
+            worksheet.write('A3', 'Data:', bold_format)
+            worksheet.write('B3', pd.to_datetime(sessao.data_evento).strftime('%d/%m/%Y'))
+            worksheet.write('A4', 'Horário:', bold_format)
+            worksheet.write('B4', f"{sessao.hora_inicio} - {sessao.hora_fim}")
+            worksheet.write('D3', 'Total de Participantes:', bold_format)
+            worksheet.write('E3', sessao.quantidade_pessoas)
+            
+            # Formatando a tabela de participantes
+            worksheet.write(5, 0, 'Integrantes da Sessão', header_format)
+            worksheet.set_column('A:A', 40) # Ajusta a largura da coluna de nomes
 
-    # Prepara o arquivo em memória para ser enviado
     output.seek(0)
-
-    # Define os cabeçalhos para o navegador entender que é um arquivo para download
-    headers = {
-        'Content-Disposition': 'attachment; filename="cronograma_otimizado.xlsx"'
-    }
-    
+    headers = {'Content-Disposition': 'attachment; filename="cronograma_otimizado.xlsx"'}
     return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
