@@ -76,7 +76,8 @@ def criar_matriz(df_sessoes, list_equipes, caminho_arquivo):
             for _, disp_row in disponibilidade_pessoa.iterrows():
                 inicio_disp = disp_row['Inicio_Disp']
                 fim_disp = disp_row['Fim_Disp']
-                if max(inicio_sessao, inicio_disp) < min(fim_sessao, fim_disp):
+                # Condição de contenção: a sessão deve estar DENTRO da disponibilidade
+                if inicio_disp <= inicio_sessao and fim_sessao <= fim_disp:
                     disponivel = True
                     break
             if disponivel:

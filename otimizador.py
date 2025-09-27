@@ -56,7 +56,7 @@ def otimizar_cronograma(df_sessoes, df_matriz_disponibilidade):
     # problema.solve(solver_cplex)
 
     # normal
-    problema.solve(pulp.PULP_CBC_CMD(timeLimit=3000, gapRel=0.02))
+    problema.solve(pulp.PULP_CBC_CMD(timeLimit=1000, gapRel=0.02))
 
     if pulp.LpStatus[problema.status] != 'Optimal':
         return {
