@@ -56,10 +56,16 @@ async def gerar_cronograma_endpoint(
     arquivo: UploadFile = File(...)
 ):
     try:
+        
         # --- ETAPA 0: Processar os inputs recebidos ---
         dias_da_semana = json.loads(dias_da_semana_json)
         horarios_inicio_list = [h.strip() for h in horarios_inicio_list_str.split(',')]
         equipes_para_processar = [e.strip() for e in equipes_str.split(',')]
+        # --- PASSO 1 DE DEPURAÇÃO: Imprimir os valores recebidos ---
+        print("-----------------------------------------")
+        print(f"DEBUG: Dias da semana recebidos do frontend (padrão Pandas esperado): {dias_da_semana}")
+        print("-----------------------------------------")
+        # -----------------------------------------
 
         # --- ETAPA 1: Gerar Sessões ---
         df_sessoes = criar_sessoes(
