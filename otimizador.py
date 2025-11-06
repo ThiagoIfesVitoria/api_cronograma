@@ -37,7 +37,14 @@ def otimizar_cronograma(df_sessoes, df_matriz, tempo_limite_segundos=120):
 
     print(f"Iniciando otimização com limite de tempo de {tempo_limite_segundos} segundos...")
     #solver = pulp.PULP_CBC_CMD(timeLimit=tempo_limite_segundos)
-    problema.solve()
+
+    # cplex
+    cplex_path = r"C:\Program Files\IBM\ILOG\CPLEX_Studio2211\cplex\bin\x64_win64\cplex.exe"
+    
+    # # Passe o caminho para o PuLP
+    solver_cplex = pulp.CPLEX_CMD(path=cplex_path)
+    problema.solve(solver_cplex)
+    #problema.solve()
     
     status_text = pulp.LpStatus.get(problema.status, "Status Desconhecido")
     print(f"Otimização concluída. Status: {status_text} ({problema.status})")
