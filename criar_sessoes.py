@@ -1,64 +1,71 @@
-# criar_sessoes_logic.py
-from datetime import datetime, timedelta
-import locale
 import pandas as pd
+from datetime import timedelta
 
 def criar_sessoes(data_inicio_str, data_fim_str, dias_da_semana, horarios_inicio_list, duracao_sessao_horas, capacidade_padrao):
     """
-    Gera todas as sessões possíveis com base nos parâmetros fornecidos.
-    Retorna um DataFrame do pandas com as sessões ou uma string de erro.
+    Cria um DataFrame com todas as sessões possíveis,
+    já incluindo colunas de datetime para início e fim.
     """
     try:
-        # Tenta definir a localidade para PT-BR. UTF-8 para sistemas Unix/macOS
-        locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
-    except locale.Error:
-        try:
-            # Tenta definir a localidade para PT-BR para Windows
-            locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
-        except locale.Error:
-            print("Aviso: Não foi possível definir a localidade para português. Nomes de meses serão em inglês.")
-            pass # Continua sem a localidade PT-BR se falhar
+        # 1. Gerar o range de datas
+        df_datas = pd.DataFrame(pd.date_range(start=data_inicio_str, end=data_fim_str), columns=['Data do evento'])
+        df_datas['Dia_Semana'] = df_datas['Data do evento'].dt.dayofweek
+        
+        # 2. Filtrar pelos dias da semana selecionados
+        df_datas_filtrado = df_datas[df_datas['Dia_Semana'].isin(dias_da_semana)].copy()
 
-    try:
-        data_inicio_dt = datetime.strptime(data_inicio_str, '%Y-%m-%d')
-        data_fim_dt = datetime.strptime(data_fim_str, '%Y-%m-%d')
-    except ValueError:
-        return "Erro: Formato de data inválido. Use YYYY-MM-DD."
+        if df_datas_filtrado.empty:
+            print("Nenhuma data válida encontrada para os dias da semana selecionados.")
+            return pd.DataFrame()
 
-    if data_inicio_dt > data_fim_dt:
-        return "Erro: Data de início não pode ser posterior à data de fim."
+        # 3. Processar horários
+        horarios_processados = []
+        for h in horarios_inicio_list:
+            try:
+                hora_inicio = pd.to_datetime(h).time()
+                hora_fim = (pd.to_datetime(h) + timedelta(hours=duracao_sessao_horas)).time()
+                horarios_processados.append({'Hora ini': hora_inicio, 'Hora fim': hora_fim})
+            except Exception as e:
+                print(f"Ignorando horário mal formatado: {h}. Erro: {e}")
+                continue
+        
+        if not horarios_processados:
+            print("Nenhum horário válido foi processado.")
+            return pd.DataFrame()
 
-    sessoes_geradas = []
-    contador_s = 1 # Contador para o nome da sessão
+        df_horarios = pd.DataFrame(horarios_processados)
 
-    delta = data_fim_dt - data_inicio_dt
+        # 4. Cruzar datas e horários para criar sessões
+        df_datas_filtrado['key'] = 1
+        df_horarios['key'] = 1
+        df_sessoes = pd.merge(df_datas_filtrado, df_horarios, on='key').drop('key', axis=1)
 
-    for i in range(delta.days + 1):
-        data_evento = data_inicio_dt + timedelta(days=i)
+        if df_sessoes.empty:
+            print("Nenhuma sessão foi criada a partir do cruzamento de datas e horários.")
+            return pd.DataFrame()
 
-        if data_evento.weekday() in dias_da_semana:
-            for horario_ini_str in horarios_inicio_list:
-                try:
-                    horario_inicio_dt = datetime.strptime(horario_ini_str, '%H:%M').time()
-                except ValueError:
-                    return f"Erro: Formato de horário inválido '{horario_ini_str}'. Use HH:MM."
+        # 5. Adicionar informações restantes
+        df_sessoes['Sessao'] = [f"sessao_{i+1}" for i in range(len(df_sessoes))]
+        df_sessoes['Capacidade'] = capacidade_padrao
 
-                data_e_hora_inicio = datetime.combine(data_evento.date(), horario_inicio_dt)
-                data_e_hora_fim = data_e_hora_inicio + timedelta(hours=duracao_sessao_horas)
-                mes_evento = data_evento.strftime('%B')
-                
-                sessoes_geradas.append({
-                    'Sessao': f'sessao {contador_s}', # Adição da coluna 'Sessao'
-                    'Data do evento': data_evento.strftime('%Y-%m-%d'),
-                    'Hora ini': horario_ini_str,
-                    'Hora fim': data_e_hora_fim.strftime('%H:%M'),
-                    'Capacidade': capacidade_padrao,
-                    'Mês do evento': mes_evento
-                })
-                contador_s += 1 # Incrementa o contador
-    
-    if not sessoes_geradas:
-        return "Nenhuma sessão gerada com os parâmetros fornecidos. Verifique as datas e dias da semana."
+        # --- ALTERAÇÃO IMPORTANTE: Adicionar colunas de datetime ---
+        df_sessoes['Inicio_Sessao'] = pd.to_datetime(
+            df_sessoes['Data do evento'].astype(str) + ' ' + df_sessoes['Hora ini'].astype(str)
+        )
+        df_sessoes['Fim_Sessao'] = pd.to_datetime(
+            df_sessoes['Data do evento'].astype(str) + ' ' + df_sessoes['Hora fim'].astype(str)
+        )
+        # --------------------------------------------------------
 
-    df_sessoes = pd.DataFrame(sessoes_geradas)
-    return df_sessoes 
+        # 6. Reordenar colunas
+        colunas_finais = [
+            'Sessao', 'Data do evento', 'Dia_Semana', 'Hora ini', 'Hora fim', 
+            'Inicio_Sessao', 'Fim_Sessao', 'Capacidade'
+        ]
+        df_sessoes = df_sessoes[colunas_finais]
+
+        return df_sessoes
+
+    except Exception as e:
+        print(f"Erro inesperado em criar_sessoes: {e}")
+        return pd.DataFrame()
